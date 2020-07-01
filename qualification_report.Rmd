@@ -1,0 +1,264 @@
+---
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{multirow}
+  - \usepackage{wrapfig}
+  - \usepackage{float}
+  - \usepackage{colortbl}
+  - \usepackage{pdflscape}
+  - \usepackage{tabu}
+  - \usepackage{threeparttable}
+  - \usepackage{threeparttablex}
+  - \usepackage[normalem]{ulem}
+  - \usepackage[normalem]{ulem}
+  - \usepackage[utf8]{inputenc}
+  - \usepackage{makecell}
+  - \usepackage{xcolor}
+  - \usepackage{titling}
+  - \pretitle{\begin{center}
+    \includegraphics[width=4in]{images/CSU-Official-wrdmrk-357-617.png}\LARGE\\}
+  - \posttitle{\end{center}}
+output:
+  pdf_document
+params:
+  title: 'Face Mask or Respirator Particulate Removal Efficiency Test Results of Qualification Testing - '
+  id: "c33"
+  type: "detailed"
+  fldr: "data"
+  img: "img"
+  tst: "tst"
+geometry: "left=2cm,right=2cm,top=0cm,bottom=2cm"
+---
+
+---
+title: `r paste0(params$title, "M", toupper(params$id))`
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.path = 'figures/',
+  warning = FALSE,
+  message = FALSE,
+  echo = FALSE,
+  cache = FALSE)
+```
+
+\definecolor{c_failed}{RGB}{205,79,57}
+\definecolor{c_passed}{RGB}{46,139,87}
+\definecolor{grey50}{RGB}{127,127,127}
+
+\renewcommand{\topfraction}{.85}
+\renewcommand{\bottomfraction}{.7}
+\renewcommand{\textfraction}{.15}
+\renewcommand{\floatpagefraction}{.66}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{3}
+\setcounter{totalnumber}{4}
+
+```{r functions_file}
+source("functions_n95.R")
+```
+
+```{r read_metadata}
+# read metadata
+meta <- read_metadata(fldr = params$fldr) %>%
+  filter(mask == params$id)
+```
+
+```{r read_data}
+# read data
+data <- read_data(fldr = params$fldr, id = params$id, tst = params$tst) %>%
+  clean_data()
+```
+
+```{r data_average}
+# one minute average
+data_time <- data %>% group_by(rep) %>%
+  summarise(t_min = min(datetime, na.rm = TRUE),
+            t_max = max(datetime, na.rm = TRUE)) %>%
+  group_by(rep) %>%
+  mutate(datetime = list(seq(t_min, t_max, by= 1)), t_min = NULL, t_max = NULL) %>%
+  unnest(cols = c(datetime)) %>%
+  ungroup() %>%
+  select(-rep) %>%
+  left_join(data, by = "datetime") %>%
+  group_by(rep) %>%
+  mutate_at(vars(-group_cols()), zoo::rollmeanr, k = 60, na.pad = TRUE) %>%
+  fill(-group_cols()) %>%
+  ungroup()
+```
+
+```{r data_ref}
+# extract reference data
+data_ref <- data_time %>%
+  filter(status == 0) %>%
+  group_by(rep) %>%
+  filter(datetime > min(datetime, na.rm = TRUE) + 0.25 * 60 &
+           datetime < max(datetime, na.rm = TRUE) - 0.25 * 60) %>% # trim start and end
+  ungroup()
+```
+
+```{r data_ref_summary}
+ref <- data_ref %>%
+  group_by(rep) %>%
+  arrange(datetime) %>%
+  summarise_all(last) %>%
+  mutate(cor = ref_volt / sample_volt)
+
+cor <- ref %>%
+  select(rep, cor) # use average of last minute minus trim
+```
+
+```{r data_sample}
+# extract sample data
+data_sample <- data_time %>%
+  filter(status == 1) %>%
+  left_join(cor, by = "rep") %>%
+  group_by(rep) %>%
+  filter(datetime > min(datetime, na.rm = TRUE) + 1 * 60 &
+           datetime < max(datetime, na.rm = TRUE) - 1 * 60) %>% # trim first and last minute
+  ungroup() %>%
+  mutate(penetration = 100 * (cor * sample_volt) / ref_volt,
+         collection = 100 - penetration)
+```
+
+```{r data_sample_summary}
+# calculate summary statistics
+results <- data_sample %>%
+  group_by(rep) %>%
+  summarise(p_max = max(penetration, na.rm = TRUE),
+            c_min = min(collection, na.rm = TRUE),
+            dp_initial = dp_mmh2o[which.min(datetime)],
+            c_initial = collection[which.min(datetime)],
+            p_initial = penetration[which.min(datetime)]) %>%
+  mutate(result = if_else(c_min >= 95 & dp_initial <= 35, "PASS","FAIL")) %>%
+  na.omit()
+```
+
+```{r pass_fail}
+result <- if_else("FAIL" %in% results$result, "FAIL", "PASS")
+```
+
+```{r results_table_detailed}
+if(params$type == "detailed"){
+results_table <- results %>%
+  mutate_if(is.numeric, round, 1) %>%
+  mutate(p_max = cell_spec(p_max, "latex",
+                           color = ifelse(p_max <= 5, "c_passed", "c_failed")),
+         p_initial = cell_spec(p_initial, "latex",
+                               color = ifelse(p_initial <= 5, "c_passed", "c_failed")),
+         c_min = cell_spec(c_min, "latex",
+                           color = ifelse(c_min >= 95, "c_passed", "c_failed")),
+         c_initial = cell_spec(c_initial, "latex",
+                               color = ifelse(c_initial >= 95, "c_passed", "c_failed")),
+         dp_initial = cell_spec(dp_initial, "latex",
+                                color = ifelse(dp_initial <= 35, "c_passed", "c_failed")),
+         result = cell_spec(result, "latex",
+                            color = ifelse(result == "PASS", "c_passed", "c_failed"))) %>%
+  select(rep, dp_initial, p_initial, p_max, c_initial, c_min, result)
+}
+```
+
+```{r results_dp_binned}
+if(params$type == "binned"){
+results_dp <- results %>%
+  mutate(pct = if_else(dp_initial <= 35, "l1", NA_character_),
+         pct = if_else(dp_initial > 35, "l2", pct),
+         pct = factor(pct, levels = c("l1", "l2"))) %>%
+  count(pct, .drop = FALSE) %>%
+  mutate(n = if_else(n > 0, "X", "")) %>%
+  pivot_wider(names_from = "pct", values_from = "n")
+}
+```
+
+```{r results_table_binned}
+if(params$type == "binned"){
+results_table <- results %>%
+  mutate(pct = if_else(c_min <= 25, "l1", NA_character_),
+         pct = if_else(c_min > 25 & c_min <= 50, "l2", pct),
+         pct = if_else(c_min > 50 & c_min <= 75, "l3", pct),
+         pct = if_else(c_min > 75 & c_min < 95, "l4", pct),
+         pct = if_else(c_min >= 95, "l5", pct),
+         pct = factor(pct, levels = c("l1", "l2", "l3", "l4", "l5"))) %>%
+  count(pct, .drop = FALSE) %>%
+  mutate(n = if_else(n > 0, "X", "")) %>%
+  pivot_wider(names_from = "pct", values_from = "n")
+}
+```
+
+\vspace{-20truemm}
+\begin{Large}
+\begin{center}(Not for Distribution)\end{center}
+\end{Large}
+
+**Source:** `r str_to_title(meta$manufacturer[1])`
+
+**Description:**  `r meta$description[1]` 
+
+**Identification number:**  `r meta$id_number[1]` 
+
+**Approval number:**  `r meta$approval[1]`
+
+**Local supplier contact:**  `r str_to_title(meta$contact[1])`
+
+**Intake form received:** `r if_else(meta$intake[1] == "true", "Yes", "No")`
+
+**Date tested:**	`r as.Date(min(data$datetime))`
+
+**Result:**	`r result`
+
+```{r mask_image_file}
+# take first matching image file
+img_file <- str_subset(params$img, regex(params$id, ignore_case = TRUE))[1]
+```
+
+```{r mask_image, fig.align='center', fig.pos='h', fig.cap="A photograph of the mask/respirator that was tested.", out.width = "35%", out.extra = "angle=-90", eval = TRUE}
+knitr::include_graphics(img_file, dpi=500)
+```
+
+\vspace{-5truemm}
+
+```{r table_detailed}
+if(params$type == "detailed"){
+  knitr::kable(results_table, "latex", booktabs = T, escape = F, digits = 1, align = "c",
+               col.names = c("Replicate", "Pressure drop (mm $H_20$)", "Initial (\\%)", "Maximum (\\%)", "Initial (\\%)", "Minimum (\\%)", "Result")) %>%
+    add_header_above(c(" ", " ", "Penetration" = 2, "Removal" = 2)) %>%
+    column_spec(2, width = "2.5cm") %>%
+    kable_styling(latex_options = c("striped", "repeat_header"))
+}
+```
+
+```{r table_binned_pen}
+if(params$type == "binned"){
+  kable(results_table, "latex", booktabs = T, escape = F, align = "c",
+               col.names = c("0\\% to 25\\%", "25\\% to 50\\%", "50\\% to 75\\%", "75\\% to 95\\%", "maybe above 95\\%"),
+               caption = "Measured particulate removal efficiency:") %>%
+    kable_styling(latex_options = c("hover", "condensed", "hold_position"), full_width = F) %>%
+    column_spec(1, background = "c_failed", color = "white") %>%
+    column_spec(2, background = "c_failed", color = "white") %>%
+    column_spec(3, background = "c_failed", color = "white") %>%
+    column_spec(4, background = "c_failed", color = "white") %>%
+    column_spec(5, background = "c_passed", color = "white") %>%
+    row_spec(0, background = "grey50", color = "white", extra_latex_after = "\\arrayrulecolor{white}")
+}
+```
+
+\vspace{-5truemm}
+
+```{r table_binned_dp}
+if(params$type == "binned"){
+  kable(results_dp,
+        "latex", booktabs = T, escape = F, align = "c",
+        col.names = c("$\\leq$ 35 mm $H_20$", "> 35 mm $H_20$"),
+        caption = "Measured pressure drop across mask or respirator:") %>%
+    kable_styling(latex_options = c("condensed", "hold_position"), full_width = F) %>%
+    column_spec(1, background = "c_passed", color = "white") %>%
+    column_spec(2, background = "c_failed", color = "white") %>%
+    row_spec(0, background = "grey50", color = "white", extra_latex_after = "\\arrayrulecolor{white}")
+}
+```
+
+\vspace{-1truemm}
+
+**Next steps:** Masks or respirators that passed this qualification test will be tested in accordance with ASTM F2100/F2266 (if a surgical mask) or NIOSH procedure TEB-APR-STP-0059-508/TEB-APR-STP-0059-007 (all other types) to confirm particulate removal efficiencies of at least 95%. Masks and respirators that did not demonstrate collection efficiencies of at least 95% during qualification testing will not undergo further testing.
