@@ -8,7 +8,11 @@ source("functions_n95.R")
 ```
 
 ```{r}
-server <- "/Volumes/N95 Mask Certifications/Data"
+if(Sys.info()["sysname"] == "Windows"){
+  p_server <- "H:/Volckens Group/Projects/N95 Mask Certifications/Data" # Windows
+}else{
+  p_server <- "/Volumes/N95 Mask Certifications/Data" # OSX
+}
 ```
 
 # Read metadata
@@ -20,13 +24,13 @@ meta <- read_metadata(server)
 # Read analysis log
 
 ```{r}
-analyze <- read_csv("data/analyze.csv", col_types = cols(.default = "c"))
+analyze <- read_csv("analyze.csv", col_types = cols(.default = "c"))
 ```
 
 # Files
 
 ```{r}
-img_files <- list.files(server, 
+img_files <- list.files(p_server, 
   pattern = paste0(".*.jpg$"),
   full.names = TRUE,
   ignore.case = TRUE,
@@ -34,7 +38,7 @@ img_files <- list.files(server,
 ```
 
 ```{r}
-test_files <- list.files(server,
+test_files <- list.files(p_server,
   pattern = paste0(".*_m.*.csv$"),
   ignore.case = TRUE,
   full.names = TRUE,
@@ -46,14 +50,20 @@ test_files <- list.files(server,
 ```{r}
 analyze_f <- function(mask,
                       analysis_type = "detailed",
-                      server = "/Volumes/N95 Mask Certifications/Data",
+                      server = p_server,
                       images = img_files,
                       tests = test_files){
     render("qualification_report.Rmd",
            "pdf_document",
            params = list(id = mask, type = analysis_type, fldr = server, img = images, tst = tests),
-           output_file = paste0("/Volumes/N95 Mask Certifications/Data/qualification reports/", mask, ".pdf")) # server
-           #output_file = paste0("reports/", mask, ".pdf")) # local
+           #output_file = if_else(Sys.info()["sysname"] == "Windows",
+           #                     paste0("H:/Volckens Group/Projects/N95 Mask Certifications/Data/qualification reports/",
+           #                           mask,
+           #                          ".pdf"),
+           #                     paste0("/Volumes/N95 Mask Certifications/Data/qualification reports/",
+           #                            mask,
+           #                            ".pdf"))
+           output_file = paste0("reports/", mask, ".pdf")) # local
 }
 ```
 
