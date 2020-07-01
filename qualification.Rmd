@@ -1,0 +1,62 @@
+---
+title: "Qualification"
+output: html_document
+---
+
+```{r}
+source("functions_n95.R")
+```
+
+```{r}
+server <- "/Volumes/N95 Mask Certifications/Data"
+```
+
+# Read metadata
+
+```{r}
+meta <- read_metadata(server)
+```
+
+# Read analysis log
+
+```{r}
+analyze <- read_csv("data/analyze.csv", col_types = cols(.default = "c"))
+```
+
+# Files
+
+```{r}
+img_files <- list.files(server, 
+  pattern = paste0(".*.jpg$"),
+  full.names = TRUE,
+  ignore.case = TRUE,
+  recursive = TRUE)
+```
+
+```{r}
+test_files <- list.files(server,
+  pattern = paste0(".*_m.*.csv$"),
+  ignore.case = TRUE,
+  full.names = TRUE,
+  recursive = TRUE) 
+```
+
+# Map tests
+
+```{r}
+analyze_f <- function(mask,
+                      analysis_type = "detailed",
+                      server = "/Volumes/N95 Mask Certifications/Data",
+                      images = img_files,
+                      tests = test_files){
+    render("qualification_report.Rmd",
+           "pdf_document",
+           params = list(id = mask, type = analysis_type, fldr = server, img = images, tst = tests),
+           output_file = paste0("/Volumes/N95 Mask Certifications/Data/qualification reports/", mask, ".pdf")) # server
+           #output_file = paste0("reports/", mask, ".pdf")) # local
+}
+```
+
+```{r}
+purrr::map2(analyze$mask, analyze$type, analyze_f)
+```
