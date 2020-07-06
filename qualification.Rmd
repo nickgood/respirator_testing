@@ -56,14 +56,14 @@ analyze_f <- function(mask,
     render("qualification_report.Rmd",
            "pdf_document",
            params = list(id = mask, type = analysis_type, fldr = server, img = images, tst = tests),
-           #output_file = if_else(Sys.info()["sysname"] == "Windows",
-           #                     paste0("H:/Volckens Group/Projects/N95 Mask Certifications/Data/qualification reports/",
-           #                           mask,
-           #                          ".pdf"),
-           #                     paste0("/Volumes/N95 Mask Certifications/Data/qualification reports/",
-           #                            mask,
-           #                            ".pdf"))
-           output_file = paste0("reports/", mask, ".pdf")) # local
+           output_file = if_else(Sys.info()["sysname"] == "Windows",
+                                paste0("H:/Volckens Group/Projects/N95 Mask Certifications/Data/qualification reports/",
+                                      mask,
+                                     ".pdf"),
+                                paste0("/Volumes/N95 Mask Certifications/Data/qualification reports/",
+                                       mask,
+                                       ".pdf")))
+           #output_file = paste0("reports/", mask, ".pdf")) # local
 }
 ```
 
